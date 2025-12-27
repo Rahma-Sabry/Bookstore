@@ -14,9 +14,39 @@ if (!isAdmin()) {
 
 $conn = getDBConnection();
 $order_id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
+$message = '';
+$error = '';
 
 if ($order_id <= 0) {
     redirect('orders.php');
+}
+
+// Handle order confirmation
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_order'])) {
+    $confirm_order_id = (int)($_POST['order_id'] ?? 0);
+    
+    if ($confirm_order_id > 0 && $confirm_order_id == $order_id) {
+        // Update order status from pending to processing
+        $stmt = $conn->prepare("UPDATE orders SET status = 'processing' WHERE order_id = ? AND status = 'pending'");
+        $stmt->bind_param("i", $order_id);
+        
+        if ($stmt->execute()) {
+            if ($stmt->affected_rows > 0) {
+                $message = 'Order confirmed successfully! Status updated to processing.';
+                // Refresh order data
+                $order = $conn->query("SELECT o.*, c.first_name, c.last_name, c.email, c.phone 
+                                      FROM orders o 
+                                      JOIN customers c ON o.customer_id = c.customer_id 
+                                      WHERE o.order_id = $order_id")->fetch_assoc();
+            } else {
+                $error = 'Order could not be confirmed. It may already be processed or cancelled.';
+            }
+        } else {
+            $error = 'Failed to confirm order.';
+        }
+    } else {
+        $error = 'Invalid order ID.';
+    }
 }
 
 // Get order details
@@ -52,7 +82,24 @@ include '../includes/header.php';
         <a href="orders.php" class="btn btn-secondary">← Back to Orders</a>
     </div>
     
+    <?php if ($message): ?>
+        <div class="success-message"><?php echo htmlspecialchars($message); ?></div>
+    <?php endif; ?>
+    
+    <?php if ($error): ?>
+        <div class="error-message"><?php echo htmlspecialchars($error); ?></div>
+    <?php endif; ?>
+    
     <h1>Order Details #<?php echo $order_id; ?></h1>
+    
+    <?php if ($order['status'] == 'pending'): ?>
+        <div style="margin: 1rem 0;">
+            <form method="POST" style="display: inline;">
+                <input type="hidden" name="order_id" value="<?php echo $order_id; ?>">
+                <button type="submit" name="confirm_order" class="btn btn-success" onclick="return confirm('Confirm this order? Status will be updated to processing.');">Confirm Order</button>
+            </form>
+        </div>
+    <?php endif; ?>
     
     <div class="order-details-container">
         <div class="order-info-section">
@@ -234,6 +281,37 @@ include '../includes/header.php';
 
 .btn-secondary:hover {
     background-color: #7f8c8d;
+}
+
+.btn-success {
+    background-color: #27ae60;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+.btn-success:hover {
+    background-color: #229954;
+}
+
+.success-message {
+    background-color: #27ae60;
+    color: white;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.error-message {
+    background-color: #e74c3c;
+    color: white;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
 }
 
 @media (max-width: 768px) {

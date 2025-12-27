@@ -13,6 +13,31 @@ if (!isAdmin()) {
 }
 
 $conn = getDBConnection();
+$message = '';
+$error = '';
+
+// Handle order confirmation
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['confirm_order'])) {
+    $order_id = (int)($_POST['order_id'] ?? 0);
+    
+    if ($order_id > 0) {
+        // Update order status from pending to processing
+        $stmt = $conn->prepare("UPDATE orders SET status = 'processing' WHERE order_id = ? AND status = 'pending'");
+        $stmt->bind_param("i", $order_id);
+        
+        if ($stmt->execute()) {
+            if ($stmt->affected_rows > 0) {
+                $message = 'Order confirmed successfully! Status updated to processing.';
+            } else {
+                $error = 'Order could not be confirmed. It may already be processed or cancelled.';
+            }
+        } else {
+            $error = 'Failed to confirm order.';
+        }
+    } else {
+        $error = 'Invalid order ID.';
+    }
+}
 
 // Get all customer orders
 $sql = "SELECT o.*, c.first_name, c.last_name, c.email
@@ -27,6 +52,14 @@ include '../includes/header.php';
 
 <div class="container">
     <h1>Customer Orders</h1>
+    
+    <?php if ($message): ?>
+        <div class="success-message"><?php echo htmlspecialchars($message); ?></div>
+    <?php endif; ?>
+    
+    <?php if ($error): ?>
+        <div class="error-message"><?php echo htmlspecialchars($error); ?></div>
+    <?php endif; ?>
     
     <table class="admin-table">
         <thead>
@@ -62,6 +95,12 @@ include '../includes/header.php';
                         <td><?php echo htmlspecialchars($order['payment_method'] ?? 'N/A'); ?></td>
                         <td>
                             <a href="order-details.php?id=<?php echo $order['order_id']; ?>" class="btn btn-small">View Details</a>
+                            <?php if ($order['status'] == 'pending'): ?>
+                                <form method="POST" style="display: inline; margin-left: 0.5rem;">
+                                    <input type="hidden" name="order_id" value="<?php echo $order['order_id']; ?>">
+                                    <button type="submit" name="confirm_order" class="btn btn-small btn-success" onclick="return confirm('Confirm this order? Status will be updated to processing.');">Confirm Order</button>
+                                </form>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -134,6 +173,31 @@ include '../includes/header.php';
 
 .btn-small:hover {
     opacity: 0.9;
+}
+
+.btn-success {
+    background-color: #27ae60;
+    color: white;
+}
+
+.btn-success:hover {
+    background-color: #229954;
+}
+
+.success-message {
+    background-color: #27ae60;
+    color: white;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
+}
+
+.error-message {
+    background-color: #e74c3c;
+    color: white;
+    padding: 0.75rem;
+    border-radius: 4px;
+    margin-bottom: 1rem;
 }
 </style>
 
